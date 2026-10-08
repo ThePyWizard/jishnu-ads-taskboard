@@ -26,9 +26,9 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Verified locally against the project's signing keys; refreshes the session cookie when needed.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims;
 
   const path = request.nextUrl.pathname;
   if (!user && !PUBLIC_PATHS.some((p) => path.startsWith(p))) {

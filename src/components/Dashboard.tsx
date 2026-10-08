@@ -15,27 +15,10 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export async function Dashboard({ searchParams }: { searchParams: SearchParams }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const me = user.email ?? "";
-
-  const { data: member } = await supabase.from("members").select("role").ilike("email", me).maybeSingle();
-  if (!member) {
-    return (
-      <div className="empty">
-        <b>You&apos;re not on the members list yet</b>
-        Ask the owner to add <span className="mono">{me}</span> to the <span className="mono">members</span> table in
-        Supabase, then reload.
-        <form action={signOut} style={{ marginTop: 16 }}>
-          <button className="btn ghost">Sign out</button>
-        </form>
-      </div>
-    );
-  }
-
-  const isOwner = member.role === "owner";
+  // getClaims verifies the login token locally (ES256 signing keys), so it needs no network call.
+  const { data: auth } = await supabase.auth.getClaims();
+  if (!auth) redirect("/login");
+  const me = String(auth.claims.email ?? "");
 
   const sp = await searchParams;
   const param = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
@@ -66,7 +49,10 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     );
   }
 
-  const [appsRes, timelineRes, statsRes, tasksRes, doneRes] = await Promise.all([
+  // One round trip: the role lookup runs alongside the data queries. Non-members get empty
+  // results from the database rules, so nothing leaks before the membership check below.
+  const [memberRes, appsRes, timelineRes, statsRes, tasksRes, doneRes] = await Promise.all([
+    supabase.from("members").select("role").ilike("email", me).maybeSingle(),
     supabase.from("apps").select("name").order("sort").order("name"),
     timelineQuery,
     supabase
@@ -78,6 +64,21 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     supabase.from("tasks").select("*").or(`done.eq.false,day.eq.${today}`).order("created_at"),
     supabase.from("tasks").select("done_on").gte("done_on", addDays(today, -90)),
   ]);
+
+  const member = memberRes.data as { role: string } | null;
+  if (!member) {
+    return (
+      <div className="empty">
+        <b>You&apos;re not on the members list yet</b>
+        Ask the owner to add <span className="mono">{me}</span> to the <span className="mono">members</span> table in
+        Supabase, then reload.
+        <form action={signOut} style={{ marginTop: 16 }}>
+          <button className="btn ghost">Sign out</button>
+        </form>
+      </div>
+    );
+  }
+  const isOwner = member.role === "owner";
 
   const apps = ((appsRes.data ?? []) as AppRow[]).map((a) => a.name);
   const rows = (timelineRes.data ?? []) as Change[];

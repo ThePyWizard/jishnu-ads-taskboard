@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ad Ledger
 
-## Getting Started
+A shared notebook for Lascade's ad work: log every change you make in Meta, Google Ads or any other ad manager,
+plus your daily tasks, so your cofounder can follow the history of each app's campaigns
+(TravelAnimator, MarineRadar, AR Measure, GeoAnimator, Pingee).
 
-First, run the development server:
+Everything is entered by hand. There are no ad platform connections or API keys.
 
+**Stack:** Next.js 16 (App Router, Server Actions) · Supabase (Postgres, email + password sign-in, row level security) · Vercel (hosting).
+
+## What it does
+- Log a change: app, platform, what changed, campaign name, before → after, and why.
+- Timeline grouped by day, filterable by app, platform or text.
+- One owner adds and edits everything; viewers see the same history, read-only.
+- Daily task list; unfinished tasks carry over to the next day.
+- 12-week activity grid, changes per app this week, and a day streak.
+
+## Setup
+
+### 1. Supabase
+1. Create a project at supabase.com.
+2. In **SQL Editor**, run the files in `supabase/migrations/` in order (`…000000_init.sql`, then `…010000_owner_viewer_roles.sql`).
+3. **Authentication → Users → Add user → Create new user**: create an account for the owner and one for each viewer,
+   each with an email and password. Tick **Auto Confirm User** so no confirmation email is needed.
+4. **Authentication → Sign In / Providers → Email**: turn off **Allow new users to sign up**, so nobody else can
+   create an account. The app has no sign-up page; accounts only come from step 3.
+5. Add the members and their roles:
+   ```sql
+   insert into members (email, role) values
+     ('owner@yourcompany.com', 'owner'),     -- adds and edits changes and tasks
+     ('cofounder@yourcompany.com', 'viewer'); -- read-only
+   ```
+   The database enforces this: a viewer cannot add, edit or delete anything, even outside the app.
+
+### 2. Run locally
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local   # fill in the Supabase values
+npm install
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Deploy
+1. Push this folder to a GitHub repo and import it in Vercel.
+2. Add the variables from `.env.example` under Settings → Environment Variables.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Ideas for later
+- Daily Slack or email digest of yesterday's changes for your cofounder.
+- Weekly plain-English summary written by the Claude API.
+- Note spend and CPI next to each change, to see what a change actually did.

@@ -147,10 +147,12 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
             <b>{weekCount}</b>
             <small>changes, 7 days</small>
           </div>
-          <div className="kpi">
-            <b>{tasks.filter((t) => !t.done).length}</b>
-            <small>open tasks</small>
-          </div>
+          {isOwner && (
+            <div className="kpi">
+              <b>{tasks.filter((t) => !t.done).length}</b>
+              <small>open tasks</small>
+            </div>
+          )}
         </div>
       </header>
 
@@ -231,17 +233,19 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
 
         <aside>
           {isOwner && (
-            <section className="card">
-              <div className="card-head">
-                <h2>Log a change</h2>
-              </div>
-              <LogChangeForm apps={apps} today={today} />
-            </section>
-          )}
+            <>
+              <section className="card">
+                <div className="card-head">
+                  <h2>Log a change</h2>
+                </div>
+                <LogChangeForm apps={apps} today={today} />
+              </section>
 
-          <section className="card">
-            <TaskPanel tasks={tasks} apps={apps} today={today} canEdit={isOwner} />
-          </section>
+              <section className="card">
+                <TaskPanel tasks={tasks} apps={apps} today={today} />
+              </section>
+            </>
+          )}
 
           <form action={signOut} className="signout">
             <span className="muted small">

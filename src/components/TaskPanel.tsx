@@ -5,14 +5,8 @@ import { addTask, deleteTask, setTaskDone } from "@/app/actions";
 import { fmtDay } from "@/lib/dates";
 import type { Task } from "@/lib/types";
 
-interface Props {
-  tasks: Task[];
-  apps: string[];
-  today: string;
-  canEdit: boolean;
-}
-
-export function TaskPanel({ tasks, apps, today, canEdit }: Props) {
+/** The owner's daily task list. Not shown to viewers. */
+export function TaskPanel({ tasks, apps, today }: { tasks: Task[]; apps: string[]; today: string }) {
   const [state, action, adding] = useActionState(addTask, null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, start] = useTransition();
@@ -46,11 +40,11 @@ export function TaskPanel({ tasks, apps, today, canEdit }: Props) {
           </small>
         )}
       </div>
-      {canEdit && (
       <form
         className="form task-form"
         autoComplete="off"
         onSubmit={(e) => {
+          // Submit manually so React doesn't clear the input when saving fails.
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
           startTransition(() => action(fd));
@@ -74,22 +68,17 @@ export function TaskPanel({ tasks, apps, today, canEdit }: Props) {
           Add
         </button>
       </form>
-      )}
       {state && !state.ok && <p className="form-error">{state.message}</p>}
       {error && <p className="form-error">{error}</p>}
 
       <ul className="tasks">
-        {sorted.length === 0 && (
-          <li className="muted">
-            {canEdit ? "Nothing planned yet. Add what you'll work on today." : "No tasks for today yet."}
-          </li>
-        )}
+        {sorted.length === 0 && <li className="muted">Nothing planned yet. Add what you&apos;ll work on today.</li>}
         {sorted.map((t) => (
           <li key={t.id} className={t.done ? "done" : ""}>
             <input
               type="checkbox"
               checked={t.done}
-              disabled={pending || !canEdit}
+              disabled={pending}
               onChange={(e) => run(() => setTaskDone(t.id, e.target.checked))}
               aria-label={`Done: ${t.text}`}
             />
@@ -103,7 +92,6 @@ export function TaskPanel({ tasks, apps, today, canEdit }: Props) {
                 </span>
               )}
             </div>
-            {canEdit ? (
             <button
               className="link danger"
               aria-label="Delete task"
@@ -113,9 +101,6 @@ export function TaskPanel({ tasks, apps, today, canEdit }: Props) {
             >
               {armed === t.id ? "Confirm" : "×"}
             </button>
-            ) : (
-              <span />
-            )}
           </li>
         ))}
       </ul>

@@ -4,6 +4,7 @@ import { startTransition, useActionState, useEffect, useRef, useState, useTransi
 import { addTask, deleteTask, setTaskDone } from "@/app/actions";
 import { fmtDay } from "@/lib/dates";
 import type { Task } from "@/lib/types";
+import { Titled } from "./Icons";
 
 /** The owner's daily task list. Not shown to viewers. */
 export function TaskPanel({ tasks, apps, today }: { tasks: Task[]; apps: string[]; today: string }) {
@@ -33,7 +34,11 @@ export function TaskPanel({ tasks, apps, today }: { tasks: Task[]; apps: string[
   return (
     <>
       <div className="card-head">
-        <h2>Today&apos;s tasks</h2>
+        <h2>
+          <Titled icon="check" tint="green">
+            Today&apos;s tasks
+          </Titled>
+        </h2>
         {tasks.length > 0 && (
           <small>
             {done} of {tasks.length} done

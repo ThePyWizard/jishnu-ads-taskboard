@@ -2,12 +2,13 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import Link from "next/link";
 import { signOut } from "@/app/actions";
-import { percentChange, platformLabel } from "@/lib/constants";
+import { PLATFORMS, percentChange, platformLabel } from "@/lib/constants";
 import { addDays, dayKey, fmtDay, fmtTime, todayKey, weekdayMon0, zonedToUtcMs } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import type { AppRow, Change, Task } from "@/lib/types";
 import { EntryActions } from "./EntryActions";
 import { Filters } from "./Filters";
+import { Icon, IconBox, Titled, kindIcon } from "./Icons";
 import { LogChangeForm } from "./LogChangeForm";
 import { TaskPanel } from "./TaskPanel";
 
@@ -57,7 +58,7 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     timelineQuery,
     supabase
       .from("changes")
-      .select("happened_at, app")
+      .select("happened_at, app, platform")
       .gte("happened_at", statsSince)
       .order("happened_at", { ascending: false })
       .limit(5000),
@@ -84,7 +85,7 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
   const rows = (timelineRes.data ?? []) as Change[];
   const hasMore = rows.length > limit;
   const timeline = rows.slice(0, limit);
-  const stats = (statsRes.data ?? []) as Pick<Change, "happened_at" | "app">[];
+  const stats = (statsRes.data ?? []) as Pick<Change, "happened_at" | "app" | "platform">[];
   const tasks = (tasksRes.data ?? []) as Task[];
 
   // Streak: consecutive days with a logged change or a finished task.
@@ -100,6 +101,7 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
   const weekStart = addDays(today, -6);
   const perDay = new Map<string, number>();
   const perApp = new Map<string, number>(apps.map((a) => [a, 0]));
+  const perPlatform = new Map<string, number>(PLATFORMS.map((p) => [p.id, 0]));
   let weekCount = 0;
   for (const c of stats) {
     const k = dayKey(c.happened_at);
@@ -107,6 +109,7 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     if (k >= weekStart) {
       weekCount++;
       perApp.set(c.app, (perApp.get(c.app) ?? 0) + 1);
+      perPlatform.set(c.platform, (perPlatform.get(c.platform) ?? 0) + 1);
     }
   }
   const heatStart = addDays(today, -weekdayMon0(today) - 77);
@@ -115,8 +118,8 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     const n = perDay.get(k) ?? 0;
     return { k, n, level: n === 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 6 ? 3 : 4, future: k > today };
   });
-  const bars = [...perApp.entries()].sort((a, b) => b[1] - a[1]);
-  const barMax = Math.max(1, ...bars.map((b) => b[1]));
+  const appBars = [...perApp.entries()].sort((a, b) => b[1] - a[1]);
+  const platformBars = [...perPlatform.entries()].sort((a, b) => b[1] - a[1]);
 
   const groups: { k: string; items: Change[] }[] = [];
   for (const c of timeline) {
@@ -130,6 +133,12 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
     Object.entries({ ...filter, limit: String(limit + 150) }).filter(([, v]) => v && v !== "all"),
   );
 
+  // Owner: activity sits above the timeline, the side column holds the forms.
+  // Viewer: no forms, so activity fills the side column instead of leaving it empty.
+  const activity = (
+    <Activity heat={heat} today={today} appBars={appBars} platformBars={platformBars} stacked={!isOwner} />
+  );
+
   return (
     <>
       <header className="top">
@@ -140,18 +149,30 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
           <p>Every change to Lascade&apos;s app campaigns on Meta, Google and the rest, logged the day it happens.</p>
         </div>
         <div className="kpis">
-          <div className="kpi streak">
+          <div className="kpi">
             <b>{streak}</b>
-            <small>day streak</small>
+            <small>
+              <Titled icon="flame" tint="amber">
+                day streak
+              </Titled>
+            </small>
           </div>
           <div className="kpi">
             <b>{weekCount}</b>
-            <small>changes, 7 days</small>
+            <small>
+              <Titled icon="activity" tint="blue">
+                changes, 7 days
+              </Titled>
+            </small>
           </div>
           {isOwner && (
             <div className="kpi">
               <b>{tasks.filter((t) => !t.done).length}</b>
-              <small>open tasks</small>
+              <small>
+                <Titled icon="check" tint="green">
+                  open tasks
+                </Titled>
+              </small>
             </div>
           )}
         </div>
@@ -159,39 +180,7 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
 
       <div className="grid">
         <main>
-          <section className="card pulse" aria-label="Activity">
-            <div className="heat-wrap">
-              <div className="label">Last 12 weeks</div>
-              <div className="heat" role="img" aria-label="Changes per day over the last 12 weeks">
-                {heat.map((h) => (
-                  <i
-                    key={h.k}
-                    className={`l${h.level}${h.k === today ? " today" : ""}${h.future ? " future" : ""}`}
-                    title={`${fmtDay(h.k, today)}: ${h.n} change${h.n === 1 ? "" : "s"}`}
-                  />
-                ))}
-              </div>
-              <div className="legend">
-                Less <i className="l0" />
-                <i className="l1" />
-                <i className="l2" />
-                <i className="l3" />
-                <i className="l4" /> More
-              </div>
-            </div>
-            <div className="bars">
-              <div className="label">Changes by app, last 7 days</div>
-              {bars.map(([app, n]) => (
-                <div className="bar-row" key={app}>
-                  <span title={app}>{app}</span>
-                  <div className="bar">
-                    <i style={{ width: `${(n / barMax) * 100}%` }} />
-                  </div>
-                  <b>{n}</b>
-                </div>
-              ))}
-            </div>
-          </section>
+          {isOwner && activity}
 
           <Filters apps={apps} current={filter} />
 
@@ -232,12 +221,16 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
           )}
         </main>
 
-        <aside>
-          {isOwner && (
+        <aside className={isOwner ? undefined : "sticky"}>
+          {isOwner ? (
             <>
               <section className="card">
                 <div className="card-head">
-                  <h2>Log a change</h2>
+                  <h2>
+                    <Titled icon="pen" tint="blue">
+                      Log a change
+                    </Titled>
+                  </h2>
                 </div>
                 <LogChangeForm apps={apps} today={today} />
               </section>
@@ -246,11 +239,14 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
                 <TaskPanel tasks={tasks} apps={apps} today={today} />
               </section>
             </>
+          ) : (
+            activity
           )}
 
           <form action={signOut} className="signout">
-            <span className="muted small">
-              {me}
+            <span className="muted small account">
+              {!isOwner && <Icon name="eye" className="section-icon" />}
+              <span className="account-email">{me}</span>
               {!isOwner && <span className="role">View only</span>}
             </span>
             <button className="link">Sign out</button>
@@ -261,10 +257,88 @@ export async function Dashboard({ searchParams }: { searchParams: SearchParams }
   );
 }
 
+interface ActivityProps {
+  heat: { k: string; n: number; level: number; future: boolean }[];
+  today: string;
+  appBars: [string, number][];
+  platformBars: [string, number][];
+  stacked: boolean;
+}
+
+/** Heatmap plus 7-day breakdowns. Wide above the owner's timeline, stacked in the viewer's side column. */
+function Activity({ heat, today, appBars, platformBars, stacked }: ActivityProps) {
+  const appMax = Math.max(1, ...appBars.map((b) => b[1]));
+  const platformMax = Math.max(1, ...platformBars.map((b) => b[1]));
+  return (
+    <section className={`card pulse${stacked ? " stacked" : ""}`} aria-label="Activity">
+      <div className="heat-wrap">
+        <div className="label">
+          <Titled icon="calendar" tint="blue">
+            Last 12 weeks
+          </Titled>
+        </div>
+        <div className="heat" role="img" aria-label="Changes per day over the last 12 weeks">
+          {heat.map((h) => (
+            <i
+              key={h.k}
+              className={`l${h.level}${h.k === today ? " today" : ""}${h.future ? " future" : ""}`}
+              title={`${fmtDay(h.k, today)}: ${h.n} change${h.n === 1 ? "" : "s"}`}
+            />
+          ))}
+        </div>
+        <div className="legend">
+          Less <i className="l0" />
+          <i className="l1" />
+          <i className="l2" />
+          <i className="l3" />
+          <i className="l4" /> More
+        </div>
+      </div>
+      <div className="bars">
+        <div className="label">
+          <Titled icon="grid" tint="purple">
+            By app, 7 days
+          </Titled>
+        </div>
+        {appBars.map(([app, n]) => (
+          <div className="bar-row" key={app}>
+            <span title={app}>{app}</span>
+            <div className="bar">
+              <i style={{ width: `${(n / appMax) * 100}%` }} />
+            </div>
+            <b>{n}</b>
+          </div>
+        ))}
+      </div>
+      <div className="bars">
+        <div className="label">
+          <Titled icon="chart" tint="amber">
+            By platform, 7 days
+          </Titled>
+        </div>
+        {platformBars.map(([id, n]) => (
+          <div className="bar-row" key={id}>
+            <span>
+              <i className={`swatch sw-${id}`} />
+              {platformLabel(id)}
+            </span>
+            <div className="bar">
+              <i className={`fill-${id}`} style={{ width: `${(n / platformMax) * 100}%` }} />
+            </div>
+            <b>{n}</b>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Entry({ c, isOwner }: { c: Change; isOwner: boolean }) {
   const pct = percentChange(c.before_value, c.after_value);
+  const k = kindIcon(c.kind);
   return (
-    <article className="entry" data-platform={c.platform}>
+    <article className="entry">
+      <IconBox name={k.icon} tint={k.tint} className="rail-icon" />
       <div className="e-rail">
         <span className={`plat plat-${c.platform}`}>{platformLabel(c.platform)}</span>
         <time dateTime={c.happened_at}>{fmtTime(c.happened_at)}</time>
@@ -272,7 +346,7 @@ function Entry({ c, isOwner }: { c: Change; isOwner: boolean }) {
       <div className="e-body">
         <div className="e-head">
           <span className="app">{c.app}</span>
-          <span className="kind">{c.kind}</span>
+          <span className={`kind ink-${k.tint}`}>{c.kind}</span>
         </div>
         {c.entity && <div className="entity mono">{c.entity}</div>}
         {(c.before_value || c.after_value) && (
